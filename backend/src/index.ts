@@ -14,6 +14,7 @@ dotenv.config();
 
 const app = express();
 app.use(express.json());
+app.set("trust proxy", 1);
 
 const pgPool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -124,7 +125,7 @@ app.post("/getNonce", async (req: Request, res: Response) => {
     )}`;
     req.session.nonce = nonce;
     req.session.publicKey = publicKey;
-
+    console.log("Logging from /gerNonce");
     return res.status(200).json({
       success: true,
       message: "Nonce generated successfully",
@@ -172,7 +173,7 @@ app.post("/verifySign", async (req: Request, res: Response) => {
       create: { wallet: recoveredAddress },
     });
     req.session.userId = user.id;
-
+    console.log("Verify successfull");
     return res.status(200).json({
       success: true,
       message: "Login successful",
@@ -189,22 +190,30 @@ app.post("/verifySign", async (req: Request, res: Response) => {
 
 // Get current user
 app.get("/me", async (req, res) => {
-  if (!req.session.userId) {
-    return res.status(401).json({
+  try {
+    if (!req.session.userId) {
+      return res.json({
+        success: false,
+        message: "Not logged in",
+      });
+    }
+
+    const user = await prismaClient.user.findUnique({
+      where: { id: req.session.userId },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "User fetched successfully",
+      data: user,
+    });
+  } catch (error) {
+    console.error("me error:", error);
+    return res.status(500).json({
       success: false,
-      message: "Not logged in",
+      message: "Internal server error",
     });
   }
-
-  const user = await prismaClient.user.findUnique({
-    where: { id: req.session.userId },
-  });
-
-  return res.status(200).json({
-    success: true,
-    message: "User fetched successfully",
-    data: user,
-  });
 });
 
 // Create series
@@ -257,4 +266,63 @@ app.post("/createSeries", checkAuth, async (req: Request, res: Response) => {
       message: "Internal server error",
     });
   }
+});
+
+app.post("/populateEntry", checkAuth, async (req: Request, res: Response) => {
+  try {
+    const { seriesAddress, entryIndex, mediaType, title, description } =
+      req.body;
+
+    if (!seriesAddress || entryIndex === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing seriesAddress or entryIndex",
+      });
+    }
+    const collection = await prismaClient.collection.findUnique({
+      where: { contractAddress: seriesAddress },
+    });
+
+    if (!collection) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Collection not found" });
+    }
+
+    // update the entry
+    const entry = await prismaClient.entry.update({
+      where: {
+        collectionId_entryIndex: {
+          collectionId: collection.id,
+          entryIndex: Number(entryIndex),
+        },
+      },
+      data: {
+        mediaType,
+        title,
+        description,
+      },
+    });
+
+    return res.json({ success: true, data: entry });
+  } catch (error) {
+    console.error("populateEntry error:", error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
+  }
+});
+
+app.post("/logout", (req, res) => {
+  console.log("Claering user");
+  req.session.destroy((err) => {
+    if (err) {
+      console.error("Logout error:", err);
+      return res
+        .status(500)
+        .json({ success: false, message: "Failed to logout" });
+    }
+    res.clearCookie("connect.sid"); // or whatever your session cookie is called
+    return res.json({ success: true, message: "Logged out" });
+  });
 });

@@ -51,12 +51,15 @@ model Entry {
   collectionId  String
   entryIndex    Int
   cid           String
-  mediaType     String
+  mediaType     String?
   title         String?
   description   String?
   createdAt     DateTime @default(now())
 
   collection Collection @relation(fields: [collectionId], references: [id])
+
+    @@unique([collectionId, entryIndex]) 
+
 }
 
 model UserNFT {
