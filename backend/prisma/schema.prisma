@@ -71,4 +71,6 @@ model UserNFT {
 
   user       User       @relation(fields: [userId], references: [id])
   collection Collection @relation(fields: [collectionId], references: [id])
+    @@unique([collectionId, tokenId]) 
+
 }

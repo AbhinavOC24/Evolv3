@@ -9,6 +9,8 @@ import { Pool } from "pg";
 import AWS from "aws-sdk";
 import { ethers } from "ethers";
 import { checkAuth } from "./middleware/checkAuth";
+import { SiweMessage } from "siwe";
+import crypto from "crypto";
 
 dotenv.config();
 
@@ -62,7 +64,7 @@ app.listen(process.env.BACKEND_PORT, () => {
 // ------------------ ROUTES ------------------
 
 // Upload file
-app.post("/upload", upload.single("file"), async (req, res) => {
+app.post("/upload", upload.single("file"), checkAuth, async (req, res) => {
   try {
     const file = req.file;
     if (!file) {
@@ -110,21 +112,12 @@ app.post("/upload", upload.single("file"), async (req, res) => {
 });
 
 // Get nonce
-app.post("/getNonce", async (req: Request, res: Response) => {
+app.get("/getNonce", async (req: Request, res: Response) => {
   try {
-    const { publicKey } = req.body;
-    if (!publicKey) {
-      return res.status(400).json({
-        success: false,
-        message: "Missing public key",
-      });
-    }
+    const nonce = crypto.randomBytes(16).toString("hex");
 
-    const nonce = `Sign this message to login: ${Math.floor(
-      Math.random() * 1000000
-    )}`;
     req.session.nonce = nonce;
-    req.session.publicKey = publicKey;
+
     console.log("Logging from /gerNonce");
     return res.status(200).json({
       success: true,
@@ -143,41 +136,53 @@ app.post("/getNonce", async (req: Request, res: Response) => {
 // Verify signature
 app.post("/verifySign", async (req: Request, res: Response) => {
   try {
-    const { address, signature } = req.body;
+    const { message, signature } = req.body;
     const nonce = req.session.nonce;
 
-    if (!nonce || !req.session.publicKey) {
+    if (!nonce) {
       return res.status(400).json({
         success: false,
         message: "No nonce in session",
       });
     }
 
-    const recoveredAddress = ethers.verifyMessage(nonce, signature);
+    // Parse SIWE message
+    const siweMessage = new SiweMessage(message);
 
-    if (
-      recoveredAddress.toLowerCase() !== req.session.publicKey.toLowerCase()
-    ) {
+    // Ensure nonce matches what we issued
+    if (siweMessage.nonce !== nonce) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid nonce",
+      });
+    }
+
+    // Verify signature
+    const recoveredAddress = await siweMessage.verify({ signature });
+
+    if (!recoveredAddress.success) {
       return res.status(401).json({
         success: false,
         message: "Invalid signature",
       });
     }
 
+    // Clear used nonce
     delete req.session.nonce;
-    delete req.session.publicKey;
 
+    // Upsert user in DB
     const user = await prismaClient.user.upsert({
-      where: { wallet: recoveredAddress },
+      where: { wallet: siweMessage.address },
       update: {},
-      create: { wallet: recoveredAddress },
+      create: { wallet: siweMessage.address },
     });
+
     req.session.userId = user.id;
-    console.log("Verify successfull");
+
     return res.status(200).json({
       success: true,
       message: "Login successful",
-      data: { address: recoveredAddress, user },
+      data: { address: siweMessage.address, user },
     });
   } catch (error) {
     console.error("Verify error:", error);
@@ -188,7 +193,6 @@ app.post("/verifySign", async (req: Request, res: Response) => {
   }
 });
 
-// Get current user
 app.get("/me", async (req, res) => {
   try {
     if (!req.session.userId) {
@@ -197,7 +201,7 @@ app.get("/me", async (req, res) => {
         message: "Not logged in",
       });
     }
-
+    console.log("HIT /me");
     const user = await prismaClient.user.findUnique({
       where: { id: req.session.userId },
     });

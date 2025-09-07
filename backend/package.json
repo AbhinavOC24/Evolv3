@@ -27,6 +27,7 @@
     "express-session": "^1.18.2",
     "multer": "^2.0.2",
     "pg": "^8.16.3",
+    "siwe": "^3.0.0",
     "typescript": "^5.9.2"
   },
   "devDependencies": {
