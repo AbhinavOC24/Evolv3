@@ -221,101 +221,101 @@ app.get("/me", async (req, res) => {
 });
 
 // Create series
-app.post("/createSeries", checkAuth, async (req: Request, res: Response) => {
-  try {
-    const { contractAddress, name, symbol, metadataURI, coverImage } = req.body;
-    const creatorId = req.session.userId;
+// app.post("/createSeries", checkAuth, async (req: Request, res: Response) => {
+//   try {
+//     const { contractAddress, name, symbol, metadataURI, coverImage } = req.body;
+//     const creatorId = req.session.userId;
 
-    if (!creatorId) {
-      return res.status(401).json({
-        success: false,
-        message: "Not authenticated",
-      });
-    }
+//     if (!creatorId) {
+//       return res.status(401).json({
+//         success: false,
+//         message: "Not authenticated",
+//       });
+//     }
 
-    const duplicate = await prismaClient.collection.findUnique({
-      where: {
-        name_symbol: { name, symbol },
-      },
-    });
+//     const duplicate = await prismaClient.collection.findUnique({
+//       where: {
+//         name_symbol: { name, symbol },
+//       },
+//     });
 
-    if (duplicate) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "A collection with this name and symbol already exists. Please choose different values.",
-      });
-    }
+//     if (duplicate) {
+//       return res.status(400).json({
+//         success: false,
+//         message:
+//           "A collection with this name and symbol already exists. Please choose different values.",
+//       });
+//     }
 
-    const series = await prismaClient.collection.create({
-      data: {
-        contractAddress,
-        name,
-        symbol,
-        metadataURI,
-        coverImage,
-        creator: { connect: { id: creatorId } },
-      },
-    });
+//     const series = await prismaClient.collection.create({
+//       data: {
+//         contractAddress,
+//         name,
+//         symbol,
+//         metadataURI,
+//         coverImage,
+//         creator: { connect: { id: creatorId } },
+//       },
+//     });
 
-    return res.status(200).json({
-      success: true,
-      message: "Series created successfully",
-      data: series,
-    });
-  } catch (error) {
-    console.error("CreateSeries error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
-  }
-});
+//     return res.status(200).json({
+//       success: true,
+//       message: "Series created successfully",
+//       data: series,
+//     });
+//   } catch (error) {
+//     console.error("CreateSeries error:", error);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Internal server error",
+//     });
+//   }
+// });
 
-app.post("/populateEntry", checkAuth, async (req: Request, res: Response) => {
-  try {
-    const { seriesAddress, entryIndex, mediaType, title, description } =
-      req.body;
+// app.post("/populateEntry", checkAuth, async (req: Request, res: Response) => {
+//   try {
+//     const { seriesAddress, entryIndex, mediaType, title, description } =
+//       req.body;
 
-    if (!seriesAddress || entryIndex === undefined) {
-      return res.status(400).json({
-        success: false,
-        message: "Missing seriesAddress or entryIndex",
-      });
-    }
-    const collection = await prismaClient.collection.findUnique({
-      where: { contractAddress: seriesAddress },
-    });
+//     if (!seriesAddress || entryIndex === undefined) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Missing seriesAddress or entryIndex",
+//       });
+//     }
+//     const collection = await prismaClient.collection.findUnique({
+//       where: { contractAddress: seriesAddress },
+//     });
 
-    if (!collection) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Collection not found" });
-    }
+//     if (!collection) {
+//       return res
+//         .status(404)
+//         .json({ success: false, message: "Collection not found" });
+//     }
 
-    // update the entry
-    const entry = await prismaClient.entry.update({
-      where: {
-        collectionId_entryIndex: {
-          collectionId: collection.id,
-          entryIndex: Number(entryIndex),
-        },
-      },
-      data: {
-        mediaType,
-        title,
-        description,
-      },
-    });
+//     // update the entry
+//     const entry = await prismaClient.entry.update({
+//       where: {
+//         collectionId_entryIndex: {
+//           collectionId: collection.id,
+//           entryIndex: Number(entryIndex),
+//         },
+//       },
+//       data: {
+//         mediaType,
+//         title,
+//         description,
+//       },
+//     });
 
-    return res.json({ success: true, data: entry });
-  } catch (error) {
-    console.error("populateEntry error:", error);
-    return res
-      .status(500)
-      .json({ success: false, message: "Internal server error" });
-  }
-});
+//     return res.json({ success: true, data: entry });
+//   } catch (error) {
+//     console.error("populateEntry error:", error);
+//     return res
+//       .status(500)
+//       .json({ success: false, message: "Internal server error" });
+//   }
+// });
 
 app.post("/logout", (req, res) => {
   console.log("Claering user");
@@ -329,4 +329,71 @@ app.post("/logout", (req, res) => {
     res.clearCookie("connect.sid"); // or whatever your session cookie is called
     return res.json({ success: true, message: "Logged out" });
   });
+});
+
+// GET /mySeries
+app.get("/mySeries", checkAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.session.userId;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Not authenticated",
+      });
+    }
+
+    const series = await prismaClient.collection.findMany({
+      where: { creatorId: userId },
+      include: {
+        creator: {
+          select: {
+            wallet: true,
+          },
+        },
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Fetched creator's series successfully",
+      data: series,
+    });
+  } catch (error) {
+    console.error("mySeries error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+});
+
+// GET /series/:id
+app.get("/series/:id", checkAuth, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    if (!id) return;
+    const series = await prismaClient.collection.findUnique({
+      where: { id },
+      include: {
+        entries: true,
+        creator: {
+          select: { id: true, wallet: true },
+        },
+      },
+    });
+
+    if (!series) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Series not found" });
+    }
+
+    return res.json({ success: true, data: series });
+  } catch (error) {
+    console.error("series/:id error:", error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
+  }
 });

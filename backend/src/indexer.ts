@@ -20,7 +20,15 @@ const factory = new ethers.Contract(
 
 factory.on(
   "SeriesCreated",
-  async (creator, series, name, symbol, metadataURI) => {
+  async (
+    creator,
+    series,
+    name,
+    symbol,
+    metadataURI,
+    description,
+    coverImage
+  ) => {
     try {
       console.log(
         "📚 New series:",
@@ -31,7 +39,11 @@ factory.on(
         "by",
         creator,
         "metadata",
-        metadataURI
+        metadataURI,
+        "description",
+        description,
+        "coverImage",
+        coverImage
       );
 
       const user = await prismaClient.user.upsert({
@@ -51,6 +63,8 @@ factory.on(
             name,
             symbol,
             metadataURI,
+            description,
+            coverImage,
           },
         });
       } else {
@@ -74,7 +88,7 @@ factory.on(
 async function listenToSeries(seriesAddress: string) {
   try {
     const series = new ethers.Contract(seriesAddress, seriesAbi.abi, provider);
-    series.on("EntryAdded", async (entryNumber, uri, title, description) => {
+    series.on("EntryAdded", async (entryNumber, uri, title) => {
       console.log("✏️ New entry:", entryNumber.toString(), uri);
 
       const collection = await prismaClient.collection.findUnique({
@@ -101,7 +115,6 @@ async function listenToSeries(seriesAddress: string) {
           entryIndex: Number(entryNumber),
           cid: uri,
           title,
-          description,
           mediaType: "unknown",
         },
       });

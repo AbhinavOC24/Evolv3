@@ -49,7 +49,7 @@ export function getWagmiConfig() {
       appName: "Evolv3",
       projectId: process.env.NEXT_PUBLIC_WC_PROJECT_ID!,
       chains: [somniaTestnet],
-      ssr: true,
+      ssr: false,
     });
   }
   return wagmiConfig;
